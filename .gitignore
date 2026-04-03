@@ -1,0 +1,40 @@
+# Keil Clean
+*.rar
+*.o
+*.d
+*.crf
+*.htm
+*.dep
+*.map
+*.bak
+*.lnp
+*.lst
+*.ini
+*.iex
+*.sct
+*.scvd
+*.uvguix
+*.dbg*
+*.axf
+*.hex
+*.uvguix.*
+*.uvoptx
+*.uvprojx
+.mxproject
+*.txt
+*.json
+*.xml
+
+
+#Keil Project screen layout file
+*.uvguix.*
+*.uvgui.*
+
+
+#JLINK file
+JLinkLog.txt
+*.dbgconf
+cmake-build-debug/
+.idea/
+
+
