@@ -114,7 +114,7 @@ int Bootloader_FlashApp(uint32_t app_addr,const char *filename)
 {
     FIL file;
     if(f_open(&file, filename, FA_READ) != FR_OK){
-        LogPrintf("[ERROR] Open file '%s' failed!\r\n", filename);
+        LogPrintf("[ERROR] Open file '0:%s' failed!\r\n", filename);
         return -1;
     }
 
@@ -223,7 +223,8 @@ int ExistApplication(uint32_t app_addr)
 {
     uint32_t sp    = *(uint32_t*)app_addr;
     uint32_t reset = *(uint32_t*)(app_addr + 4);
-
+	LogPrintf("[INFO] SP    = 0x%08X\r\n", sp);
+	LogPrintf("[INFO] RESET = 0x%08X\r\n", reset);
     if ((sp < SRAM_START) || (sp > SRAM_END))
         return 0;
 
@@ -243,7 +244,8 @@ void RunApp(void)
 	LogPrintf("[INFO] -------------------------------------\r\n");
 	LogPrintf("[INFO] ----------This is BootLoader---------\r\n");
 	LogPrintf("[INFO] -------------------------------------\r\n");
-
+	
+	Bootloader_Init();
     // 1ÓÐÉý¼¶ÇëÇó
     if(check->flag == UPDATE_FLAG_VALUE)
     {
