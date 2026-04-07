@@ -1,100 +1,160 @@
 # GD32_IAP_BOOTLOADER
 
-## 📌 项目简介
+## 📌 Overview
 
-GD32_IAP_BOOTLOADER 是一个工业级 IAP 引导程序，用于在系统启动时检测升级请求，并从外部 Flash（W25Q128）中读取固件，烧写到内部 Flash，最终跳转执行应用程序。
+`GD32_IAP_BOOTLOADER` is an industrial-grade bootloader designed for in-application programming (IAP).
+It works together with `GD32_IAP_APP` to implement a **reliable firmware upgrade solution**.
 
-该 Bootloader 具备 **完整升级流程控制 + 应用有效性检测 + 安全跳转机制**。
+The Bootloader is responsible for:
 
----
-
-## 🚀 核心功能
-
-* ✅ 上电自动检测升级标志
-* ✅ 从外部 Flash 读取固件（FatFs）
-* ✅ 自动擦除并写入内部 Flash
-* ✅ 应用有效性检测（SP / RESET 校验）
-* ✅ 安全跳转到 APP
-* ✅ 升级完成自动清除标志位
-* ✅ 异常保护（无效 APP 不跳转）
+* Detecting firmware update requests
+* Reading firmware from external Flash (W25Q128 via FatFs)
+* Programming internal Flash
+* Validating and jumping to the application
 
 ---
 
-## 🧩 启动流程
+## 🧩 Full System Architecture
 
-```
-        上电复位
-            │
-            ▼
-     Bootloader 启动
-            │
-            ▼
-   检查升级标志位
-        │        │
-       是        否
-        │        │
-        ▼        ▼
- 执行固件升级   检查 APP 是否存在
-        │        │
-        ▼        ▼
-  写入内部 Flash   有 → 跳转
-        │          无 → 停留 Bootloader
-        ▼
- 清除升级标志
-        ▼
- 跳转 APP
+```text
+                ┌──────────────────────────────┐
+                │           PC Tool            │
+                │  (SecureCRT / TeraTerm)     │
+                └──────────────┬──────────────┘
+                               │ YModem
+                               ▼
+                ┌──────────────────────────────┐
+                │        GD32_IAP_APP          │
+                │  - Firmware Download        │
+                │  - Store to W25Q128         │
+                │  - Set Update Flag          │
+                └──────────────┬──────────────┘
+                               │ Reset
+                               ▼
+                ┌──────────────────────────────┐
+                │     GD32_IAP_BOOTLOADER      │
+                │  - Detect Update Flag        │
+                │  - Flash Internal Memory     │
+                │  - Validate Application      │
+                │  - Jump to APP              │
+                └──────────────────────────────┘
 ```
 
 ---
 
-## 🔍 核心函数说明
+## 🚀 Key Features
+
+* ✅ Automatic firmware upgrade detection via flash flag
+* ✅ External Flash firmware loading (W25Q128 + FatFs)
+* ✅ Safe internal Flash erase & programming
+* ✅ Application validity check (SP / RESET vector)
+* ✅ Robust jump mechanism (MSP + VTOR relocation)
+* ✅ Upgrade flag auto-clear after success
+* ✅ Fail-safe behavior (no valid APP → stay in Bootloader)
+
+---
+
+## ⚙️ Boot Flow
+
+```text
+        Power On / Reset
+                │
+                ▼
+        Bootloader Start
+                │
+                ▼
+      Check Update Flag
+         │            │
+        YES           NO
+         │            │
+         ▼            ▼
+  Perform Upgrade   Check APP
+         │            │
+         ▼            ▼
+  Flash Internal     Valid?
+         │         │      │
+         ▼        YES     NO
+  Clear Flag       │      │
+         ▼        ▼       ▼
+     Jump APP   Jump APP  Stay in Bootloader
+```
+
+---
+
+## 🧠 Update Flag Mechanism
+
+Shared with APP:
+
+```c
+#define UPDATE_FLAG_ADDR   0x08030000
+#define UPDATE_FLAG_VALUE  0xA5A5A5A5
+```
+
+### Structure (example)
+
+```c
+typedef struct
+{
+    uint32_t flag;
+    uint32_t file_size;
+    char     filename[32];
+} UpdateInfo_t;
+```
+
+### Workflow
+
+1. APP writes update info into Flash
+2. Bootloader reads and validates it
+3. If valid → perform firmware upgrade
+4. After success → erase flag sector
+
+---
+
+## 🔥 Core Functions
 
 ### RunApp()
 
-* Bootloader 主入口
-* 控制升级流程 & 启动逻辑
+Main Bootloader entry:
+
+* Initializes system
+* Checks update flag
+* Controls upgrade or normal boot
 
 ---
 
 ### Bootloader_FlashApp()
 
-* 从文件系统读取固件
-* 擦除目标 Flash 区域
-* 按字写入内部 Flash
+* Opens firmware file from FatFs
+* Erases internal Flash sectors
+* Writes firmware in aligned format
+* Handles remaining bytes safely
 
 ---
 
 ### ExistApplication()
 
-* 校验 APP 是否有效：
+Validates application:
 
-  * SP 是否在 SRAM 范围
-  * RESET 是否在 Flash 范围
+* Stack Pointer (SP) in SRAM range
+* Reset Handler in Flash range
 
 ---
 
 ### JumpToApp()
 
-* 设置 MSP
-* 重定位向量表（VTOR）
-* 跳转执行 APP
+Safe jump procedure:
+
+* Disable interrupts
+* Reset peripherals
+* Set MSP
+* Relocate vector table
+* Jump to application
 
 ---
 
-## ⚙️ Flash 规划（示例）
+## ⚠️ Safety Design
 
-| 区域         | 地址          |
-| ---------- | ----------- |
-| Bootloader | 0x08000000  |
-| APP        | 0x08040000  |
-| 升级标志位      | 指定 Flash 扇区 |
-| 外部 Flash   | W25Q128     |
-
----
-
-## ⚠️ 关键设计点
-
-### ✔ APP 有效性检测
+### ✔ Application Validation
 
 ```c
 if ((sp < SRAM_START) || (sp > SRAM_END))
@@ -103,51 +163,95 @@ if ((sp < SRAM_START) || (sp > SRAM_END))
 
 ---
 
-### ✔ 跳转前系统清理
+### ✔ Flash Protection
 
-* 关闭中断
-* 复位 RCC
-* 关闭串口
+* Sector-based erase
+* Word-aligned programming
+* Boundary checking
 
 ---
 
-### ✔ 向量表重定位
+### ✔ Fail-Safe Mechanism
 
-```c
-SCB->VTOR = app_addr;
+* Invalid APP → no jump
+* Upgrade failure → stay in Bootloader
+* Flag only cleared after success
+
+---
+
+## 💾 Flash Layout (Example)
+
+| Region            | Address    | Description      |
+| ----------------- | ---------- | ---------------- |
+| Bootloader        | 0x08000000 | Boot code        |
+| Update Flag       | 0x08030000 | Upgrade info     |
+| Application (APP) | 0x08040000 | User firmware    |
+| External Flash    | W25Q128    | Firmware storage |
+
+---
+
+## 🔁 Upgrade Sequence (End-to-End)
+
+```text
+APP:
+  Download firmware (YModem)
+        ↓
+  Store in W25Q128
+        ↓
+  Set update flag
+        ↓
+  System reset
+
+Bootloader:
+  Detect flag
+        ↓
+  Read firmware
+        ↓
+  Flash internal memory
+        ↓
+  Clear flag
+        ↓
+  Jump to APP
 ```
 
 ---
 
-## ❗ 常见问题
+## ❗ Common Issues
 
-### 1️⃣ APP 无法跳转
+### 1. APP not jumping
 
-* 向量表地址错误
-* 链接地址未修改（必须匹配 APP1_ADDR）
-
----
-
-### 2️⃣ 升级失败
-
-* Flash 擦除失败
-* 文件系统读取异常
-* bin 文件损坏
+* Incorrect linker address
+* Invalid vector table
 
 ---
 
-### 3️⃣ 死机在 Bootloader
+### 2. Upgrade failed
 
-* APP 无效
-* 未写入升级标志
+* Flash erase/write error
+* File read failure
 
 ---
 
-## 🛠️ 适用场景
+### 3. Stuck in Bootloader
 
-* 工业设备固件升级
-* 嵌入式 OTA Bootloader
-* 高可靠升级系统
+* No valid APP
+* Update flag not cleared
+
+---
+
+## 🔗 Related Project
+
+👉 `GD32_IAP_APP` (Firmware download side)
+
+This Bootloader must be used together with the APP project.
+
+---
+
+## 🛠️ Hardware Requirements
+
+* GD32F470 series MCU
+* External SPI Flash (W25Q128)
+* UART interface (for firmware download via APP)
 
 ---
 
